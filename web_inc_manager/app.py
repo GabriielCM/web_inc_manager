@@ -83,7 +83,7 @@ def gerenciar_fornecedores():
             fornecedor.cnpj = request.form['cnpj']
             fornecedor.fornecedor_logix = request.form['fornecedor_logix']
             db.session.commit()
-            flash('Fornecedor atualizado com sucesso!')
+            flash('Fornecedor atualizado com sucesso!!')
 
     fornecedores = Fornecedor.query.all()
     return render_template('gerenciar_fornecedores.html', fornecedores=fornecedores)
