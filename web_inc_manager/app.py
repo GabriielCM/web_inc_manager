@@ -2,7 +2,7 @@ import os
 import json
 import hashlib
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, Response
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from reportlab.lib.pagesizes import letter
@@ -14,6 +14,8 @@ from models import db, User, INC, LayoutSetting, Fornecedor, RotinaInspecao
 from config import Config
 import re
 import chardet
+import socket
+import logging
 
 
 app = Flask(__name__)
@@ -31,6 +33,65 @@ def jinja_enumerate(iterable):
     return enumerate(iterable)
 
 app.jinja_env.filters['enumerate'] = jinja_enumerate
+
+
+
+logging.basicConfig(level=logging.DEBUG)
+
+@app.route('/print_inc_label/<int:inc_id>')
+@login_required
+def print_inc_label(inc_id):
+    inc = INC.query.get_or_404(inc_id)
+    
+    # Montar o ZPL com layout ajustado
+    zpl = f"""^XA
+^PW800          ; Largura: 100 mm = 800 pontos (203 DPI)
+^LL976          ; Altura: 122 mm = 976 pontos (203 DPI)
+^CF0,30         ; Fonte padrão, tamanho 20 pontos
+^FO50,50^FDNF-e:^FS
+^FO300,50^FD{inc.nf}^FS
+^FO50,100^FDData:^FS
+^FO300,100^FD{inc.data}^FS
+^FO50,150^FDRepresentante:^FS
+^FO300,150^FD{inc.representante[:20]}^FS    ; Limitar a 20 caracteres
+^FO50,200^FDFornecedor:^FS
+^FO300,200^FD{inc.fornecedor[:20]}^FS      ; Limitar a 20 caracteres
+^FO50,250^FDItem:^FS
+^FO300,250^FD{inc.item}^FS
+^FO50,300^FDQtd. Recebida:^FS
+^FO300,300^FD{inc.quantidade_recebida}^FS
+^FO50,350^FDQtd. Defeituosa:^FS
+^FO300,350^FD{inc.quantidade_com_defeito}^FS
+^FO50,400^FDDescricao:^FS
+^FO300,400^FB600,6,N,10^FD{inc.descricao_defeito}^FS  ; Bloco de texto com quebra de linha
+^FO50,650^FDUrgencia:^FS
+^FO300,650^FD{inc.urgencia}^FS
+^FO50,720^FDAcao Recomendada:^FS
+^FO300,720^FB600,3,N,10^FD{inc.acao_recomendada}^FS  ; Bloco de texto com quebra de linha
+^FO50,830^FDStatus:^FS
+^FO300,830^FD{inc.status}^FS
+^XZ"""
+
+    printer_ip = "192.168.1.48"  # Substitua pelo IP correto
+    printer_port = 9100  # Confirme a porta
+    
+    try:
+        logging.debug(f"Tentando conectar a {printer_ip}:{printer_port}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)  # Timeout de 5 segundos
+            s.connect((printer_ip, printer_port))
+            logging.debug("Conexão estabelecida, enviando ZPL")
+            s.send(zpl.encode('utf-8'))
+            logging.debug("ZPL enviado com sucesso")
+        flash('Etiqueta enviada para impressão!', 'success')
+    except socket.error as e:
+        logging.error(f"Erro de socket: {str(e)}")
+        flash(f'Erro ao imprimir: {str(e)}', 'danger')
+    except Exception as e:
+        logging.error(f"Erro geral: {str(e)}")
+        flash(f'Erro ao imprimir: {str(e)}', 'danger')
+
+    return redirect(url_for('detalhes_inc', inc_id=inc_id))
 
 def validate_item_format(item):
     pattern = r'^[A-Z]{3}\.\d{5}$'
@@ -694,4 +755,4 @@ def export_pdf(inc_id):
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=f'inc_{inc.nf}.pdf')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

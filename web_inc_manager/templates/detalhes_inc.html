@@ -25,5 +25,6 @@
     </div>
 </div>
 <a href="{{ url_for('export_pdf', inc_id=inc.id) }}" class="btn btn-primary mt-3">Exportar PDF</a>
+<a href="{{ url_for('print_inc_label', inc_id=inc.id) }}" class="btn btn-primary mt-3">Imprimir Etiqueta</a>
 <a href="{{ url_for('visualizar_incs') }}" class="btn btn-secondary mt-3">Voltar</a>
 {% endblock %}
