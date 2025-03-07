@@ -12,7 +12,7 @@ class User(UserMixin, db.Model):
 
 class INC(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    nf = db.Column(db.Integer, nullable=False, unique=True)
+    nf = db.Column(db.Integer, nullable=False, unique=False)
     data = db.Column(db.String(10), nullable=False)
     representante = db.Column(db.String(100), nullable=False)
     fornecedor = db.Column(db.String(100), nullable=False)
