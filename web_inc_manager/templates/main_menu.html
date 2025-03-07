@@ -19,6 +19,9 @@
             <a href="{{ url_for('gerenciar_fornecedores') }}" class="btn btn-primary w-100">Gerenciar Fornecedores</a>
         </div>
         <div class="col-md-4 mb-3">
+            <a href="{{ url_for('listar_rotinas_inspecao')}}" class="btn btn-primary w-100">Listar Rotinas de Inspeçao</a>
+        </div>
+        <div class="col-md-4 mb-3">
             <a href="{{ url_for('monitorar_fornecedores') }}" class="btn btn-primary w-100">Monitorar Fornecedores</a>
         </div>
         {% if current_user.is_admin %}
