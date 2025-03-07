@@ -23,7 +23,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Adicionar filtro from_json ao Jinja2
+# Adicionar filtro from_json ao Jinja2 tesy
 app.jinja_env.filters['from_json'] = lambda s: json.loads(s)
 
 # Adicionar filtro enumerate ao Jinja2
