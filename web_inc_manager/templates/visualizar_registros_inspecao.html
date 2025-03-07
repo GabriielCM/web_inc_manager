@@ -1,0 +1,137 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Registros de Inspeção</h1>
+
+{% if session.get('inspecao_crm_token') %}
+<div class="alert alert-info mb-3" role="alert">
+    Token CRM em uso: {{ session['inspecao_crm_token'] }}
+    <button class="btn btn-sm btn-warning ms-2" onclick="document.getElementById('tokenForm').style.display='block'">Alterar Token</button>
+</div>
+<div id="tokenForm" style="display:none;" class="mb-3">
+    <form method="POST" action="{{ url_for('set_crm_token') }}">
+        <div class="input-group">
+            <input type="text" class="form-control" name="crm_link" placeholder="Cole o novo link do CRM" required>
+            <button type="submit" class="btn btn-primary">Atualizar Token</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="alert alert-warning mb-3" role="alert">
+    Todos os registros devem ser inspecionados ou adiados antes de salvar a rotina.
+</div>
+
+{% for ar, registros in grupos_ar %}
+<div class="card mb-3" id="ar-{{ ar }}">
+    <div class="card-header">
+        AR: {{ ar }}
+    </div>
+    <div class="card-body">
+        {% if registros %}
+        <h5 class="card-title">Fornecedor: {{ registros[0].fornecedor }}</h5>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Descrição</th>
+                    <th>Quantidade</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for registro in registros %}
+                <tr>
+                    <td>{{ registro.item }}</td>
+                    <td>{{ registro.descricao }}</td>
+                    <td>{{ registro.qtd_recebida }}</td>
+                    <td class="status-cell" data-inspecionado="{{ registro.inspecionado|lower }}" data-adiado="{{ registro.adiado|lower }}">
+                        {% if registro.inspecionado %}
+                            Inspecionado
+                        {% elif registro.adiado %}
+                            Adiado
+                        {% else %}
+                            Pendente
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openCRMLink('{{ registro.item }}')">Acessar Desenho</button>
+                        <form method="POST" action="{{ url_for('visualizar_registros_inspecao') }}" style="display:inline;" onsubmit="saveScrollPosition()">
+                            <input type="hidden" name="item_index" value="{{ loop.index0 }}">
+                            <input type="hidden" name="action" value="inspecionar">
+                            <input type="hidden" name="ar" value="{{ ar }}">
+                            <input type="hidden" name="scroll_position" id="scroll_position_inspecionar_{{ ar }}_{{ loop.index0 }}">
+                            <button type="submit" class="btn btn-success btn-sm">Inspecionar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('visualizar_registros_inspecao') }}" style="display:inline;" onsubmit="saveScrollPosition()">
+                            <input type="hidden" name="item_index" value="{{ loop.index0 }}">
+                            <input type="hidden" name="action" value="adiar">
+                            <input type="hidden" name="ar" value="{{ ar }}">
+                            <input type="hidden" name="scroll_position" id="scroll_position_adiar_{{ ar }}_{{ loop.index0 }}">
+                            <button type="submit" class="btn btn-secondary btn-sm">Adiar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<form method="POST" action="{{ url_for('salvar_rotina_inspecao') }}">
+    <div class="text-center">
+        <button type="submit" class="btn btn-primary" id="saveButton" disabled>Salvar Rotina</button>
+        <a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+    </div>
+</form>
+
+<script>
+function openCRMLink(item) {
+    const token = "{{ session.get('inspecao_crm_token', '') }}";
+    if (!token) {
+        alert('Token CRM não disponível');
+        return;
+    }
+    const baseUrl = "http://192.168.1.47/crm/index.php?route=engenharia/produto/update";
+    const encodedItem = encodeURIComponent(item);
+    const link = `${baseUrl}&token=${token}&cod_item=${encodedItem}&filter_cod=${item.toLowerCase()}`;
+    window.open(link, '_blank');
+}
+
+function saveScrollPosition() {
+    const scrollPosition = window.scrollY || window.pageYOffset;
+    document.querySelectorAll('input[name="scroll_position"]').forEach(input => {
+        input.value = scrollPosition;
+    });
+}
+
+function updateSaveButton() {
+    const statusCells = document.querySelectorAll('.status-cell');
+    let allProcessed = true;
+    
+    statusCells.forEach(cell => {
+        const inspecionado = cell.getAttribute('data-inspecionado') === 'true';
+        const adiado = cell.getAttribute('data-adiado') === 'true';
+        if (!inspecionado && !adiado) {
+            allProcessed = false;
+        }
+    });
+    
+    const saveButton = document.getElementById('saveButton');
+    saveButton.disabled = !allProcessed;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateSaveButton();
+    
+    // Restaurar a posição de rolagem se fornecida na URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const scrollPosition = urlParams.get('scroll_position');
+    if (scrollPosition) {
+        window.scrollTo(0, parseInt(scrollPosition));
+    }
+});
+</script>
+{% endblock %}

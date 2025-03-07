@@ -1,0 +1,29 @@
+body {
+    transition: background-color 0.3s, color 0.3s;
+}
+.night-mode {
+    background-color: #333;
+    color: #fff;
+}
+.night-mode .navbar {
+    background-color: #222 !important;
+}
+.btn {
+    transition: transform 0.2s;
+}
+.btn:hover {
+    transform: scale(1.05);
+}
+.table {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.alert-success {
+    color: #155724;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+.alert-danger {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}

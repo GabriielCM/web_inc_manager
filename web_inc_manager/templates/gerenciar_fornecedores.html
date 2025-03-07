@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Gerenciar Fornecedores</h1>
+<div class="mb-3">
+    <a href="{{ url_for('cadastrar_fornecedor') }}" class="btn btn-primary">Cadastrar Novo Fornecedor</a>
+</div>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Razão Social</th>
+            <th>CNPJ</th>
+            <th>Fornecedor Logix</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for fornecedor in fornecedores %}
+        <tr>
+            <td>{{ fornecedor.razao_social }}</td>
+            <td>{{ fornecedor.cnpj }}</td>
+            <td>{{ fornecedor.fornecedor_logix }}</td>
+            <td>
+                <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ fornecedor.id }}">Editar</button>
+                <form action="{{ url_for('gerenciar_fornecedores') }}" method="POST" style="display:inline;">
+                    <input type="hidden" name="fornecedor_id" value="{{ fornecedor.id }}">
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza?');">Excluir</button>
+                </form>
+            </td>
+        </tr>
+        <!-- Modal para Edição -->
+        <div class="modal fade" id="editModal{{ fornecedor.id }}" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="POST" action="{{ url_for('gerenciar_fornecedores') }}">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Editar Fornecedor: {{ fornecedor.razao_social }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" name="fornecedor_id" value="{{ fornecedor.id }}">
+                            <input type="hidden" name="action" value="update">
+                            <div class="mb-3">
+                                <label for="razao_social" class="form-label">Razão Social</label>
+                                <input type="text" class="form-control" id="razao_social" name="razao_social" value="{{ fornecedor.razao_social }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="cnpj" class="form-label">CNPJ</label>
+                                <input type="text" class="form-control" id="cnpj" name="cnpj" value="{{ fornecedor.cnpj }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="fornecedor_logix" class="form-label">Fornecedor Logix</label>
+                                <input type="text" class="form-control" id="fornecedor_logix" name="fornecedor_logix" value="{{ fornecedor.fornecedor_logix }}" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+{% endblock %}

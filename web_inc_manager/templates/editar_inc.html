@@ -1,0 +1,56 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Editar INC #{{ inc.nf }}</h1>
+<form method="POST">
+    <div class="mb-3">
+        <label for="representante" class="form-label">Representante</label>
+        <select class="form-select" id="representante" name="representante" required>
+            {% for rep in representantes %}
+            <option value="{{ rep }}" {% if rep == inc.representante %}selected{% endif %}>{{ rep }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="fornecedor" class="form-label">Fornecedor</label>
+        <input type="text" class="form-control" id="fornecedor" name="fornecedor" value="{{ inc.fornecedor }}" required>
+    </div>
+    <div class="mb-3">
+        <label for="item" class="form-label">Item</label>
+        <input type="text" class="form-control" id="item" name="item" value="{{ inc.item }}" required>
+    </div>
+    <div class="mb-3">
+        <label for="quantidade_recebida" class="form-label">Quantidade Recebida</label>
+        <input type="number" class="form-control" id="quantidade_recebida" name="quantidade_recebida" value="{{ inc.quantidade_recebida }}" required>
+    </div>
+    <div class="mb-3">
+        <label for="quantidade_com_defeito" class="form-label">Quantidade com Defeito</label>
+        <input type="number" class="form-control" id="quantidade_com_defeito" name="quantidade_com_defeito" value="{{ inc.quantidade_com_defeito }}" required>
+    </div>
+    <div class="mb-3">
+        <label for="descricao_defeito" class="form-label">Descrição do Defeito</label>
+        <textarea class="form-control" id="descricao_defeito" name="descricao_defeito" rows="3">{{ inc.descricao_defeito }}</textarea>
+    </div>
+    <div class="mb-3">
+        <label for="urgencia" class="form-label">Urgência</label>
+        <select class="form-select" id="urgencia" name="urgencia" required>
+            <option value="Crítico" {% if inc.urgencia == "Crítico" %}selected{% endif %}>Crítico</option>
+            <option value="Moderada" {% if inc.urgencia == "Moderada" %}selected{% endif %}>Moderada</option>
+            <option value="Leve" {% if inc.urgencia == "Leve" %}selected{% endif %}>Leve</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="acao_recomendada" class="form-label">Ação Recomendada</label>
+        <input type="text" class="form-control" id="acao_recomendada" name="acao_recomendada" value="{{ inc.acao_recomendada }}">
+    </div>
+    <div class="mb-3">
+        <label for="status" class="form-label">Status</label>
+        <select class="form-select" id="status" name="status" required>
+            <option value="Em andamento" {% if inc.status == "Em andamento" %}selected{% endif %}>Em andamento</option>
+            <option value="Concluída" {% if inc.status == "Concluída" %}selected{% endif %}>Concluída</option>
+            <option value="Vencida" {% if inc.status == "Vencida" %}selected{% endif %}>Vencida</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-success">Salvar</button>
+    <a href="{{ url_for('visualizar_incs') }}" class="btn btn-secondary">Voltar</a>
+</form>
+{% endblock %}

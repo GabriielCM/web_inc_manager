@@ -1,0 +1,53 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gerenciamento de INC</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        {% for setting in settings.values() %}
+        .{{ setting.element }} {
+            color: {{ setting.foreground }};
+            background-color: {{ setting.background }};
+            font-family: {{ setting.font_family }};
+            font-size: {{ setting.font_size }}px;
+        }
+        {% endfor %}
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('main_menu') }}">Q-Manager</a>
+            <div class="collapse navbar-collapse">
+                {% if current_user.is_authenticated %}
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('cadastro_inc') }}">Cadastrar INC</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('visualizar_incs') }}">Visualizar INCs</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('expiracao_inc') }}">INCs Vencidas</a></li>
+                    {% if current_user.is_admin %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('gerenciar_logins') }}">Gerenciar Logins</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('editar_layout') }}">Editar Layout</a></li>
+                    {% endif %}
+                </ul>
+                <a class="nav-link text-light" href="{{ url_for('logout') }}">Sair</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

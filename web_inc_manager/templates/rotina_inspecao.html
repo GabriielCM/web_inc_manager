@@ -1,0 +1,17 @@
+﻿<!-- rotina_inspecao.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Rotina de Inspeção</h1>
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <form method="POST" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="file" class="form-label">Importar arquivo .lst</label>
+                <input class="form-control" type="file" id="file" name="file" accept=".lst" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Importar</button>
+            <a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

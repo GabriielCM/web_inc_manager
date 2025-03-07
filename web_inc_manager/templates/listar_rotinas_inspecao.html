@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1 class="text-center mb-4">Rotinas de Inspeção Salvas</h1>
+    {% if rotinas %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Inspetor</th>
+                <th>Data de Inspeção</th>
+                <th>Registros</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rotina in rotinas %}
+            <tr>
+                <td>{{ rotina.id }}</td>
+                <td>{{ rotina.inspetor.username }}</td>
+                <td>{{ rotina.data_inspecao.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                <td>
+                    {% set registros = rotina.registros | from_json %}
+                    {% for registro in registros %}
+                    Item: {{ registro.item }} - 
+                    Status: 
+                    {% if registro.inspecionado %}
+                        Inspecionado
+                    {% elif registro.adiado %}
+                        Adiado
+                    {% else %}
+                        Pendente
+                    {% endif %}<br>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-center">Nenhuma rotina de inspeção salva.</p>
+    {% endif %}
+    <div class="text-center">
+        <a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+    </div>
+</div>
+{% endblock %}

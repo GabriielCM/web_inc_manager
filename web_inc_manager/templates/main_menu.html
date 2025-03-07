@@ -1,0 +1,16 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Menu Principal</h1>
+<div class="row">
+    <div class="col-md-3"><a href="{{ url_for('cadastro_inc') }}" class="btn btn-primary w-100 mb-3">Cadastrar INC</a></div>
+    <div class="col-md-3"><a href="{{ url_for('visualizar_incs') }}" class="btn btn-primary w-100 mb-3">Visualizar INCs</a></div>
+    <div class="col-md-3"><a href="{{ url_for('expiracao_inc') }}" class="btn btn-primary w-100 mb-3">INCs Vencidas</a></div>
+    <div class="col-md-3"><a href="{{ url_for('rotina_inspecao') }}" class="btn btn-primary w-100 mb-3">Rotina de Inspeção</a></div>
+    <div class="col-md-3"><a href="{{ url_for('listar_rotinas_inspecao') }}" class="btn btn-primary w-100 mb-3">Listar Rotinas Salvas</a></div>
+    {% if current_user.is_admin %}
+    <div class="col-md-3"><a href="{{ url_for('gerenciar_logins') }}" class="btn btn-primary w-100 mb-3">Gerenciar Logins</a></div>
+    <div class="col-md-3"><a href="{{ url_for('editar_layout') }}" class="btn btn-primary w-100 mb-3">Editar Layout</a></div>
+    <div class="col-md-3"><a href="{{ url_for('gerenciar_fornecedores') }}" class="btn btn-primary w-100 mb-3">Gerenciar Fornecedores</a></div>
+    {% endif %}
+</div>
+{% endblock %}

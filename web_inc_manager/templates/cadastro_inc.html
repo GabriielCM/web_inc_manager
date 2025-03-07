@@ -1,0 +1,66 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Cadastrar INC</h1>
+<form method="POST" enctype="multipart/form-data">
+    <div class="row">
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="nf" class="form-label">NF-e</label>
+                <input type="number" class="form-control" id="nf" name="nf" required>
+            </div>
+            <div class="mb-3">
+                <label for="representante" class="form-label">Representante</label>
+                <select class="form-select" id="representante" name="representante" required>
+                    {% for rep in representantes %}
+                    <option value="{{ rep }}">{{ rep }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="fornecedor" class="form-label">Fornecedor</label>
+                <select class="form-select" id="fornecedor" name="fornecedor" required>
+                    {% for fornecedor in fornecedores %}
+                    <option value="{{ fornecedor.razao_social }}">{{ fornecedor.razao_social }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="item" class="form-label">Item</label>
+                <input type="text" class="form-control" id="item" name="item" required>
+            </div>
+            <div class="mb-3">
+                <label for="quantidade_recebida" class="form-label">Quantidade Recebida</label>
+                <input type="number" class="form-control" id="quantidade_recebida" name="quantidade_recebida" required>
+            </div>
+            <div class="mb-3">
+                <label for="quantidade_com_defeito" class="form-label">Quantidade com Defeito</label>
+                <input type="number" class="form-control" id="quantidade_com_defeito" name="quantidade_com_defeito" required>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="mb-3">
+                <label for="descricao_defeito" class="form-label">Descrição do Defeito</label>
+                <textarea class="form-control" id="descricao_defeito" name="descricao_defeito" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="urgencia" class="form-label">Urgência</label>
+                <select class="form-select" id="urgencia" name="urgencia" required>
+                    <option value="Crítico">Crítico</option>
+                    <option value="Moderada" selected>Moderada</option>
+                    <option value="Leve">Leve</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="acao_recomendada" class="form-label">Ação Recomendada</label>
+                <input type="text" class="form-control" id="acao_recomendada" name="acao_recomendada">
+            </div>
+            <div class="mb-3">
+                <label for="fotos" class="form-label">Fotos</label>
+                <input type="file" class="form-control" id="fotos" name="fotos" multiple>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-success">Cadastrar</button>
+    <a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+</form>
+{% endblock %}

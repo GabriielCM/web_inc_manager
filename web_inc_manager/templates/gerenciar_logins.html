@@ -1,0 +1,62 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Gerenciar Logins</h1>
+<div class="mb-3">
+    <a href="{{ url_for('cadastrar_usuario') }}" class="btn btn-primary">Cadastrar Novo Usuário</a>
+</div>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Usuário</th>
+            <th>Administrador</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ 'Sim' if user.is_admin else 'Não' }}</td>
+            <td>
+                <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ user.id }}">Editar</button>
+                <form action="{{ url_for('gerenciar_logins') }}" method="POST" style="display:inline;">
+                    <input type="hidden" name="user_id" value="{{ user.id }}">
+                    <input type="hidden" name="action" value="delete">
+                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza?');">Excluir</button>
+                </form>
+            </td>
+        </tr>
+        <!-- Modal para Edição -->
+        <div class="modal fade" id="editModal{{ user.id }}" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="POST">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Editar Usuário: {{ user.username }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" name="user_id" value="{{ user.id }}">
+                            <input type="hidden" name="action" value="update">
+                            <div class="mb-3">
+                                <label for="new_password{{ user.id }}" class="form-label">Nova Senha</label>
+                                <input type="password" class="form-control" id="new_password{{ user.id }}" name="new_password">
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="is_admin{{ user.id }}" name="is_admin" {% if user.is_admin %}checked{% endif %}>
+                                <label class="form-check-label" for="is_admin{{ user.id }}">Administrador</label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                            <button type="submit" class="btn btn-primary">Salvar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
+{% endblock %}
