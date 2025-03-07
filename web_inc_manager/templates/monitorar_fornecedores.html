@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-center mb-4">Monitorar Fornecedores</h1>
+<form method="POST">
+    <div class="row">
+        <div class="col-md-3">
+            <label for="fornecedor" class="form-label">Fornecedor</label>
+            <select class="form-select" id="fornecedor" name="fornecedor">
+                <option value="">Todos</option>
+                {% for fornecedor in fornecedores %}
+                <option value="{{ fornecedor.razao_social }}">{{ fornecedor.razao_social }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="item" class="form-label">Item</label>
+            <input type="text" class="form-control" id="item" name="item" placeholder="Filtrar por item">
+        </div>
+        <div class="col-md-3">
+            <label for="start_date" class="form-label">Data de</label>
+            <input type="date" class="form-control" id="start_date" name="start_date">
+        </div>
+        <div class="col-md-3">
+            <label for="end_date" class="form-label">Data até</label>
+            <input type="date" class="form-control" id="end_date" name="end_date">
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary mt-3">Filtrar</button>
+</form>
+
+{% if graph_url %}
+<h3 class="mt-4">Gráfico de INCs por Mês</h3>
+<img src="{{ graph_url }}" alt="Gráfico de Monitoramento" class="img-fluid">
+{% endif %}
+
+{% if incs %}
+<h3 class="mt-4">Lista de INCs</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>NF-e</th>
+            <th>Data</th>
+            <th>Representante</th>
+            <th>Fornecedor</th>
+            <th>Item</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for inc in incs %}
+        <tr>
+            <td>{{ inc.nf }}</td>
+            <td>{{ inc.data }}</td>
+            <td>{{ inc.representante }}</td>
+            <td>{{ inc.fornecedor }}</td>
+            <td>{{ inc.item }}</td>
+            <td>{{ inc.status }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<a href="{{ url_for('export_monitor_pdf', fornecedor=request.form.get('fornecedor') if request.method == 'POST' else request.args.get('fornecedor'), item=request.form.get('item') if request.method == 'POST' else request.args.get('item'), start_date=request.form.get('start_date') if request.method == 'POST' else request.args.get('start_date'), end_date=request.form.get('end_date') if request.method == 'POST' else request.args.get('end_date')) }}" class="btn btn-primary mt-3">Exportar PDF</a>
+{% endif %}
+{% endblock %}

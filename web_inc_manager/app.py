@@ -16,7 +16,10 @@ import re
 import chardet
 import socket
 import logging
-
+import matplotlib
+matplotlib.use('Agg')  # Usar backend não interativo para servidor
+import matplotlib.pyplot as plt 
+import base64
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -35,7 +38,136 @@ def jinja_enumerate(iterable):
 app.jinja_env.filters['enumerate'] = jinja_enumerate
 
 
+@app.route('/monitorar_fornecedores', methods=['GET', 'POST'])
+@login_required
+def monitorar_fornecedores():
+    fornecedores = Fornecedor.query.all()
+    incs = []
+    graph_url = None  # Inicializar graph_url como None
 
+    if request.method == 'POST':
+        fornecedor = request.form.get('fornecedor')
+        item = request.form.get('item')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+
+        # Construir consulta com filtros
+        query = INC.query
+        if fornecedor:
+            query = query.filter_by(fornecedor=fornecedor)
+        if item:
+            query = query.filter(INC.item.ilike(f'%{item}%'))
+        if start_date and end_date:
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            query = query.filter(INC.data >= start.strftime('%d-%m-%Y'), INC.data <= end.strftime('%d-%m-%Y'))
+
+        incs = query.all()
+
+        # Preparar dados para o gráfico (mês vs quantidade de INCs) apenas se houver INCs
+        if incs:
+            graph_data = {}
+            for inc in incs:
+                month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')  # Ex.: "03-2025"
+                graph_data[month] = graph_data.get(month, 0) + 1
+
+            # Gerar gráfico
+            plt.figure(figsize=(10, 6))
+            plt.bar(graph_data.keys(), graph_data.values())
+            plt.xlabel('Mês de Referência')
+            plt.ylabel('Quantidade de INCs')
+            plt.title('Monitoramento de Fornecedores')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+
+            # Salvar gráfico em memória
+            img = BytesIO()
+            plt.savefig(img, format='png')
+            img.seek(0)
+            graph_url = 'data:image/png;base64,' + base64.b64encode(img.getvalue()).decode()
+            plt.close()
+
+    return render_template('monitorar_fornecedores.html', fornecedores=fornecedores, incs=incs, graph_url=graph_url)
+
+# Manter a rota de exportação como está (ajustada apenas se necessário)
+@app.route('/export_monitor_pdf', methods=['GET'])
+@login_required
+def export_monitor_pdf():
+    fornecedor = request.args.get('fornecedor')
+    item = request.args.get('item')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    query = INC.query
+    if fornecedor:
+        query = query.filter_by(fornecedor=fornecedor)
+    if item:
+        query = query.filter(INC.item.ilike(f'%{item}%'))
+    if start_date and end_date:
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        query = query.filter(INC.data >= start.strftime('%d-%m-%Y'), INC.data <= end.strftime('%d-%m-%Y'))
+
+    incs = query.all()
+
+    # Gerar gráfico
+    graph_data = {}
+    for inc in incs:
+        month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')
+        graph_data[month] = graph_data.get(month, 0) + 1
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(graph_data.keys(), graph_data.values())
+    plt.xlabel('Mês de Referência')
+    plt.ylabel('Quantidade de INCs')
+    plt.title('Monitoramento de Fornecedores')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    img = BytesIO()
+    plt.savefig(img, format='png')
+    img.seek(0)
+    plt.close()
+
+    # Salvar imagem temporariamente
+    temp_path = 'temp_graph.png'
+    with open(temp_path, 'wb') as f:
+        f.write(img.getvalue())
+
+    # Gerar PDF
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    y = height - 50
+
+    # Adicionar gráfico ao PDF
+    c.drawString(50, y, "Gráfico de Monitoramento")
+    y -= 20
+    c.drawImage(temp_path, 50, y - 400, width=500, height=400, preserveAspectRatio=True)
+    y -= 450
+
+    # Listar INCs
+    c.drawString(50, y, "Lista de INCs")
+    y -= 20
+    for inc in incs:
+        text = f"NF-e: {inc.nf}, Data: {inc.data}, Fornecedor: {inc.fornecedor[:20]}, Item: {inc.item}"
+        c.drawString(50, y, text)
+        y -= 20
+        if y < 50:
+            c.showPage()
+            y = height - 50
+
+    c.save()
+    # Limpar arquivo temporário
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+
+    buffer.seek(0)
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='monitor_fornecedores.pdf')
+
+
+
+#Impressão etiqueta Zebr
 logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/print_inc_label/<int:inc_id>')
