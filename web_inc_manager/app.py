@@ -1,34 +1,38 @@
 import os
 import json
-import hashlib
+import re
+import socket
+import logging
+import chardet
 from datetime import datetime, timedelta
+from io import BytesIO
+import base64
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, Response
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from werkzeug.utils import secure_filename
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import csv
-from io import BytesIO
-from PIL import Image
 from models import db, User, INC, LayoutSetting, Fornecedor, RotinaInspecao
 from config import Config
-import re
-import chardet
-import socket
-import logging
-import matplotlib
-matplotlib.use('Agg')  # Usar backend não interativo para servidor
-import matplotlib.pyplot as plt 
-import base64
 
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Adicionar filtro from_json ao Jinja2 tesy
+# Assegurar que pasta de uploads existe
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# Adicionar filtro from_json ao Jinja2
 app.jinja_env.filters['from_json'] = lambda s: json.loads(s)
 
 # Adicionar filtro enumerate ao Jinja2
@@ -37,430 +41,81 @@ def jinja_enumerate(iterable):
 
 app.jinja_env.filters['enumerate'] = jinja_enumerate
 
-
-@app.route('/monitorar_fornecedores', methods=['GET', 'POST'])
-@login_required
-def monitorar_fornecedores():
-    fornecedores = Fornecedor.query.all()
-    incs = []
-    graph_url = None  # Inicializar graph_url como None
-
-    if request.method == 'POST':
-        fornecedor = request.form.get('fornecedor')
-        item = request.form.get('item')
-        start_date = request.form.get('start_date')
-        end_date = request.form.get('end_date')
-
-        # Construir consulta com filtros
-        query = INC.query
-        if fornecedor:
-            query = query.filter_by(fornecedor=fornecedor)
-        if item:
-            query = query.filter(INC.item.ilike(f'%{item}%'))
-        if start_date and end_date:
-            start = datetime.strptime(start_date, '%Y-%m-%d').date()
-            end = datetime.strptime(end_date, '%Y-%m-%d').date()
-            query = query.filter(INC.data >= start.strftime('%d-%m-%Y'), INC.data <= end.strftime('%d-%m-%Y'))
-
-        incs = query.all()
-
-        # Preparar dados para o gráfico (mês vs quantidade de INCs) apenas se houver INCs
-        if incs:
-            graph_data = {}
-            for inc in incs:
-                month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')  # Ex.: "03-2025"
-                graph_data[month] = graph_data.get(month, 0) + 1
-
-            # Gerar gráfico
-            plt.figure(figsize=(10, 6))
-            plt.bar(graph_data.keys(), graph_data.values())
-            plt.xlabel('Mês de Referência')
-            plt.ylabel('Quantidade de INCs')
-            plt.title('Monitoramento de Fornecedores')
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-
-            # Salvar gráfico em memória
-            img = BytesIO()
-            plt.savefig(img, format='png')
-            img.seek(0)
-            graph_url = 'data:image/png;base64,' + base64.b64encode(img.getvalue()).decode()
-            plt.close()
-
-    return render_template('monitorar_fornecedores.html', fornecedores=fornecedores, incs=incs, graph_url=graph_url)
-
-# Manter a rota de exportação como está (ajustada apenas se necessário)
-@app.route('/export_monitor_pdf', methods=['GET'])
-@login_required
-def export_monitor_pdf():
-    fornecedor = request.args.get('fornecedor')
-    item = request.args.get('item')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-
-    query = INC.query
-    if fornecedor:
-        query = query.filter_by(fornecedor=fornecedor)
-    if item:
-        query = query.filter(INC.item.ilike(f'%{item}%'))
-    if start_date and end_date:
-        start = datetime.strptime(start_date, '%Y-%m-%d').date()
-        end = datetime.strptime(end_date, '%Y-%m-%d').date()
-        query = query.filter(INC.data >= start.strftime('%d-%m-%Y'), INC.data <= end.strftime('%d-%m-%Y'))
-
-    incs = query.all()
-
-    # Gerar gráfico
-    graph_data = {}
-    for inc in incs:
-        month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')
-        graph_data[month] = graph_data.get(month, 0) + 1
-
-    plt.figure(figsize=(10, 6))
-    plt.bar(graph_data.keys(), graph_data.values())
-    plt.xlabel('Mês de Referência')
-    plt.ylabel('Quantidade de INCs')
-    plt.title('Monitoramento de Fornecedores')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-
-    img = BytesIO()
-    plt.savefig(img, format='png')
-    img.seek(0)
-    plt.close()
-
-    # Salvar imagem temporariamente
-    temp_path = 'temp_graph.png'
-    with open(temp_path, 'wb') as f:
-        f.write(img.getvalue())
-
-    # Gerar PDF
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    y = height - 50
-
-    # Adicionar gráfico ao PDF
-    c.drawString(50, y, "Gráfico de Monitoramento")
-    y -= 20
-    c.drawImage(temp_path, 50, y - 400, width=500, height=400, preserveAspectRatio=True)
-    y -= 450
-
-    # Listar INCs
-    c.drawString(50, y, "Lista de INCs")
-    y -= 20
-    for inc in incs:
-        text = f"NF-e: {inc.nf}, Data: {inc.data}, Fornecedor: {inc.fornecedor[:20]}, Item: {inc.item}"
-        c.drawString(50, y, text)
-        y -= 20
-        if y < 50:
-            c.showPage()
-            y = height - 50
-
-    c.save()
-    # Limpar arquivo temporário
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
-
-    buffer.seek(0)
-    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='monitor_fornecedores.pdf')
-
-
-
-#Impressão etiqueta Zebr
+# Configurações de logging
 logging.basicConfig(level=logging.DEBUG)
 
-@app.route('/print_inc_label/<int:inc_id>')
-@login_required
-def print_inc_label(inc_id):
-    inc = INC.query.get_or_404(inc_id)
-    
-    # Montar o ZPL com layout ajustado
-    zpl = f"""^XA
-^PW800          ; Largura: 100 mm = 800 pontos (203 DPI)
-^LL976          ; Altura: 122 mm = 976 pontos (203 DPI)
-^CF0,30         ; Fonte padrão, tamanho 20 pontos
-^FO50,50^FDNF-e:^FS
-^FO300,50^FD{inc.nf}^FS
-^FO50,100^FDData:^FS
-^FO300,100^FD{inc.data}^FS
-^FO50,150^FDRepresentante:^FS
-^FO300,150^FD{inc.representante[:20]}^FS    ; Limitar a 20 caracteres
-^FO50,200^FDFornecedor:^FS
-^FO300,200^FD{inc.fornecedor[:20]}^FS      ; Limitar a 20 caracteres
-^FO50,250^FDItem:^FS
-^FO300,250^FD{inc.item}^FS
-^FO50,300^FDQtd. Recebida:^FS
-^FO300,300^FD{inc.quantidade_recebida}^FS
-^FO50,350^FDQtd. Defeituosa:^FS
-^FO300,350^FD{inc.quantidade_com_defeito}^FS
-^FO50,400^FDDescricao:^FS
-^FO300,400^FB600,6,N,10^FD{inc.descricao_defeito}^FS  ; Bloco de texto com quebra de linha
-^FO50,650^FDUrgencia:^FS
-^FO300,650^FD{inc.urgencia}^FS
-^FO50,720^FDAcao Recomendada:^FS
-^FO300,720^FB600,3,N,10^FD{inc.acao_recomendada}^FS  ; Bloco de texto com quebra de linha
-^FO50,830^FDStatus:^FS
-^FO300,830^FD{inc.status}^FS
-^XZ"""
-
-    printer_ip = "192.168.1.48"  # Substitua pelo IP correto
-    printer_port = 9100  # Confirme a porta
-    
-    try:
-        logging.debug(f"Tentando conectar a {printer_ip}:{printer_port}")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(5)  # Timeout de 5 segundos
-            s.connect((printer_ip, printer_port))
-            logging.debug("Conexão estabelecida, enviando ZPL")
-            s.send(zpl.encode('utf-8'))
-            logging.debug("ZPL enviado com sucesso")
-        flash('Etiqueta enviada para impressão!', 'success')
-    except socket.error as e:
-        logging.error(f"Erro de socket: {str(e)}")
-        flash(f'Erro ao imprimir: {str(e)}', 'danger')
-    except Exception as e:
-        logging.error(f"Erro geral: {str(e)}")
-        flash(f'Erro ao imprimir: {str(e)}', 'danger')
-
-    return redirect(url_for('detalhes_inc', inc_id=inc_id))
+# =====================================
+# FUNÇÕES UTILITÁRIAS
+# =====================================
 
 def validate_item_format(item):
+    """Valida o formato do item - 3 letras maiúsculas, ponto e 5 dígitos"""
     pattern = r'^[A-Z]{3}\.\d{5}$'
     return re.match(pattern, item) is not None
 
-# Função auxiliar para salvar arquivos
-def save_file(file):
+def format_date_for_db(date_str):
+    """Converte uma string de data para o formato armazenado no banco"""
+    if isinstance(date_str, str):
+        # Verifica se o formato é YYYY-MM-DD (do input HTML)
+        if len(date_str) == 10 and date_str[4] == '-':
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%d-%m-%Y')
+        return date_str
+    elif isinstance(date_str, datetime):
+        return date_str.strftime('%d-%m-%Y')
+    return None
+
+def parse_date(date_str):
+    """Converte uma string de data para um objeto datetime"""
+    if not date_str:
+        return None
+    try:
+        # Tenta formato DD-MM-YYYY
+        return datetime.strptime(date_str, '%d-%m-%Y')
+    except ValueError:
+        try:
+            # Tenta formato YYYY-MM-DD
+            return datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            return None
+
+def save_file(file, allowed_extensions=None):
+    """Salva um arquivo enviado com verificação de segurança"""
+    if file.filename == '':
+        return None
+        
+    if allowed_extensions and not file.filename.lower().endswith(tuple(allowed_extensions)):
+        return None
+    
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     return f"uploads/{filename}"
 
-@app.route('/set_crm_token', methods=['GET', 'POST'])
-@login_required
-def set_crm_token():
-    if request.method == 'POST':
-        crm_link = request.form['crm_link']
-        token_match = re.search(r'token=([a-f0-9]+)', crm_link)
+def remove_file(filepath):
+    """Remove um arquivo com verificação de segurança"""
+    if not filepath:
+        return False
         
-        if token_match:
-            token = token_match.group(1)
-            session['crm_token'] = token
-            session['inspecao_crm_token'] = token  # Atualiza o token da inspeção também
-            flash('Token CRM atualizado com sucesso!', 'success')
-            return redirect(url_for('visualizar_registros_inspecao'))
-        else:
-            flash('Link CRM inválido. Verifique o link.', 'danger')
-            return redirect(url_for('visualizar_registros_inspecao'))
+    filename = os.path.basename(filepath)
+    full_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     
-    return render_template('set_crm_token.html')
-
-@app.route('/gerenciar_fornecedores', methods=['GET', 'POST'])
-@login_required
-def gerenciar_fornecedores():
-    if not current_user.is_admin:
-        flash('Acesso negado.')
-        return redirect(url_for('main_menu'))
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        fornecedor_id = request.form.get('fornecedor_id')
-        fornecedor = Fornecedor.query.get_or_404(fornecedor_id) if fornecedor_id else None
-
-        if action == 'delete':
-            db.session.delete(fornecedor)
-            db.session.commit()
-            flash('Fornecedor excluído com sucesso!')
-        elif action == 'update':
-            fornecedor.razao_social = request.form['razao_social']
-            fornecedor.cnpj = request.form['cnpj']
-            fornecedor.fornecedor_logix = request.form['fornecedor_logix']
-            db.session.commit()
-            flash('Fornecedor atualizado com sucesso!!')
-
-    fornecedores = Fornecedor.query.all()
-    return render_template('gerenciar_fornecedores.html', fornecedores=fornecedores)
-
-@app.route('/cadastrar_fornecedor', methods=['GET', 'POST'])
-@login_required
-def cadastrar_fornecedor():
-    if not current_user.is_admin:
-        flash('Acesso negado.')
-        return redirect(url_for('main_menu'))
-
-    if request.method == 'POST':
-        razao_social = request.form['razao_social']
-        cnpj = request.form['cnpj']
-        fornecedor_logix = request.form['fornecedor_logix']
-
-        # Validação simples do CNPJ (pode ser melhorada)
-        if Fornecedor.query.filter_by(cnpj=cnpj).first():
-            flash('CNPJ já cadastrado.')
-            return render_template('cadastrar_fornecedor.html')
-
-        fornecedor = Fornecedor(
-            razao_social=razao_social,
-            cnpj=cnpj,
-            fornecedor_logix=fornecedor_logix
-        )
-        db.session.add(fornecedor)
-        db.session.commit()
-        flash('Fornecedor cadastrado com sucesso!')
-        return redirect(url_for('gerenciar_fornecedores'))
-
-    return render_template('cadastrar_fornecedor.html')
-
-@app.route('/rotina_inspecao', methods=['GET', 'POST'])
-@login_required
-def rotina_inspecao():
-    # Check if CRM token is set
-    if 'crm_token' not in session:
-        flash('Você precisa importar o token do CRM primeiro.')
-        return redirect(url_for('set_crm_token'))
+    if not os.path.realpath(full_path).startswith(
+            os.path.realpath(app.config['UPLOAD_FOLDER'])):
+        return False
     
-    if request.method == 'POST':
-        # Check if the post request has the file part
-        if 'file' not in request.files:
-            flash('Nenhum arquivo selecionado')
-            return redirect(request.url)
-        
-        file = request.files['file']
-        
-        # If no file is selected, filename will be empty
-        if file.filename == '':
-            flash('Nenhum arquivo selecionado')
-            return redirect(request.url)
-        
-        # Check file extension
-        if not file.filename.lower().endswith('.lst'):
-            flash('Apenas arquivos .lst são permitidos')
-            return redirect(request.url)
-        
-        # Save the file temporarily
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        try:
-            # Parse the .lst file
-            registros = ler_arquivo_lst(filepath)
-            
-            if registros:
-                # Store the parsed records in the session
-                session['inspecao_registros'] = registros
-                # Store the current CRM token with the records
-                session['inspecao_crm_token'] = session['crm_token']
-                flash(f'Foram importados {len(registros)} registros.')
-                return redirect(url_for('visualizar_registros_inspecao'))
-            else:
-                flash('Nenhum registro válido foi importado.')
-                return redirect(request.url)
-        
-        except Exception as e:
-            flash(f'Erro ao importar arquivo: {str(e)}')
-            return redirect(request.url)
-        finally:
-            # Clean up the temporary file
-            if os.path.exists(filepath):
-                os.remove(filepath)
-    
-    return render_template('rotina_inspecao.html')
-
-@app.route('/visualizar_registros_inspecao', methods=['GET', 'POST'])
-@login_required
-def visualizar_registros_inspecao():
-    registros = session.get('inspecao_registros', [])
-    
-    if not registros:
-        flash('Nenhum registro para inspeção.')
-        return redirect(url_for('rotina_inspecao'))
-    
-    scroll_position = None
-    if request.method == 'POST':
-        action = request.form.get('action')
-        item_index = int(request.form.get('item_index'))
-        ar = int(request.form.get('ar'))
-        scroll_position = request.form.get('scroll_position')  # Obter a posição de rolagem
-        
-        print(f"POST recebido - Action: {action}, AR: {ar}, Item Index: {item_index}, Scroll Position: {scroll_position}")
-        
-        registros_no_grupo = [r for r in registros if r['num_aviso'] == ar]
-        print(f"Registros no grupo AR {ar}: {len(registros_no_grupo)} itens")
-        
-        if 0 <= item_index < len(registros_no_grupo):
-            registro_global_index = registros.index(registros_no_grupo[item_index])
-            if action == 'inspecionar':
-                registros[registro_global_index]['inspecionado'] = True
-                registros[registro_global_index]['adiado'] = False
-            elif action == 'adiar':
-                registros[registro_global_index]['inspecionado'] = False
-                registros[registro_global_index]['adiado'] = True
-            print(f"Atualizado registro {registros[registro_global_index]['item']}: {registros[registro_global_index]}")
-            session['inspecao_registros'] = registros
-    
-    # Agrupar registros por AR
-    grupos_ar = {}
-    for registro in registros:
-        ar = registro['num_aviso']
-        if ar not in grupos_ar:
-            grupos_ar[ar] = []
-        grupos_ar[ar].append(registro)
-    
-    grupos_ar_ordenados = sorted(grupos_ar.items(), key=lambda x: x[0])
-    
-    # Passar scroll_position como parâmetro na URL
-    if scroll_position:
-        return redirect(url_for('visualizar_registros_inspecao', scroll_position=scroll_position))
-    
-    return render_template('visualizar_registros_inspecao.html', grupos_ar=grupos_ar_ordenados)
-
-@app.route('/listar_rotinas_inspecao')
-@login_required
-def listar_rotinas_inspecao():
-    rotinas = RotinaInspecao.query.all()
-    # Converter registros de JSON para Python para cada rotina
-    for rotina in rotinas:
-        rotina.registros_python = json.loads(rotina.registros)
-    return render_template('listar_rotinas_inspecao.html', rotinas=rotinas)
-
-@app.route('/salvar_rotina_inspecao', methods=['POST'])
-@login_required
-def salvar_rotina_inspecao():
-    registros = session.get('inspecao_registros', [])
-    
-    if not registros:
-        flash('Nenhum registro para salvar.')
-        return redirect(url_for('rotina_inspecao'))
-    
-    print("Registros na sessão antes da validação:", registros)
-    
-    for registro in registros:
-        inspecionado = registro.get('inspecionado', False)
-        adiado = registro.get('adiado', False)
-        print(f"Registro: {registro['item']}, Inspecionado: {inspecionado}, Adiado: {adiado}")
-        if not inspecionado and not adiado:
-            flash('Todos os registros devem ser inspecionados ou adiados antes de salvar a rotina.', 'danger')
-            return redirect(url_for('visualizar_registros_inspecao'))
-    
-    rotina = RotinaInspecao(
-        inspetor_id=current_user.id,
-        registros=json.dumps(registros)
-    )
-    db.session.add(rotina)
-    db.session.commit()
-    
-    flash('Rotina de inspeção salva com sucesso!', 'success')
-    session.pop('inspecao_registros', None)
-    return redirect(url_for('main_menu'))
+    if os.path.exists(full_path):
+        os.remove(full_path)
+        return True
+    return False
 
 def ler_arquivo_lst(caminho):
     """
     Lê o arquivo .lst, filtra e processa os registros.
-    Baseado na implementação original da classe InspecaoARFrame.
     """
     registros = []
     
-    # Detect encoding
+    # Detectar codificação
     with open(caminho, "rb") as f:
         conteudo = f.read()
     encoding = chardet.detect(conteudo)['encoding']
@@ -472,14 +127,14 @@ def ler_arquivo_lst(caminho):
                 if not linha_str:
                     continue
                 
-                # Split by multiple spaces
+                # Dividir por múltiplos espaços
                 campos = re.split(r"\s{2,}", linha_str)
                 
-                # Validate and process columns
+                # Validar e processar colunas
                 if len(campos) < 9:
                     continue
                 
-                # Consolidate columns if more than 9
+                # Consolidar colunas se mais de 9
                 while len(campos) > 9:
                     campos[3] = campos[3] + " " + campos[4]
                     del campos[4]
@@ -488,25 +143,25 @@ def ler_arquivo_lst(caminho):
                     data_entrada = campos[0]
                     num_aviso = int(campos[1])
                     
-                    # Parse item code
+                    # Analisar código do item
                     parts_item = re.split(r"\s+", campos[2], maxsplit=1)
                     item_code = parts_item[1].strip() if len(parts_item) > 1 else parts_item[0].strip()
                     
                     descricao = campos[3]
                     
-                    # Parse quantity
+                    # Analisar quantidade
                     qtd_str = campos[5].replace(",", ".")
                     qtd_recebida = float(qtd_str)
                     
-                    # Parse supplier
+                    # Analisar fornecedor
                     splitted_6 = re.split(r"\s+", campos[6], maxsplit=1)
                     fornecedor = splitted_6[1] if len(splitted_6) == 2 else "DESCONHECIDO"
                     
-                    # Parse O.C.
+                    # Analisar O.C.
                     oc_str = campos[-1].strip()
                     oc_int = int(oc_str)
                     
-                    # Skip if O.C. is 0
+                    # Pular se O.C. é 0
                     if oc_int == 0:
                         continue
                     
@@ -523,42 +178,86 @@ def ler_arquivo_lst(caminho):
                     }
                     registros.append(registro)
                 
-                except Exception:
+                except Exception as e:
                     continue
         
         return registros
     
     except Exception as e:
-        # Log the error or handle it appropriately
         print(f"Erro ao ler o arquivo: {e}")
         return []
 
+# =====================================
+# ROTAS DE AUTENTICAÇÃO
+# =====================================
 
-@app.context_processor
-def inject_settings():
-    settings = {s.element: s for s in LayoutSetting.query.all()}
-    return dict(settings=settings)
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-def hash_password(password):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
-
-# Database Initialization
-with app.app_context():
-    db.create_all()
-    if not User.query.filter_by(username="Gabriel").first():
-        admin = User(username="Gabriel", password=hash_password("85629367"), is_admin=True)
-        db.session.add(admin)
-        db.session.commit()
-
 @app.route('/')
 def index():
     return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('main_menu'))
+
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('main_menu'))
+        else:
+            flash('Usuário ou senha incorretos.')
+    else:
+        if 'next' in request.args:
+            flash('Por favor, faça login para acessar essa página.')
+
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/main_menu')
+@login_required
+def main_menu():
+    return render_template('main_menu.html')
+
+@app.route('/gerenciar_logins', methods=['GET', 'POST'])
+@login_required
+def gerenciar_logins():
+    if not current_user.is_admin:
+        flash('Acesso negado.')
+        return redirect(url_for('main_menu'))
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        user_id = request.form.get('user_id')
+        user = User.query.get_or_404(user_id)
+        
+        if action == 'delete' and user.username != current_user.username:
+            db.session.delete(user)
+            db.session.commit()
+            flash('Usuário excluído com sucesso!')
+        elif action == 'update':
+            new_password = request.form.get('new_password')
+            if new_password:
+                user.password = generate_password_hash(new_password)
+            user.is_admin = 'is_admin' in request.form
+            db.session.commit()
+            flash('Usuário atualizado com sucesso!')
+    
+    users = User.query.all()
+    return render_template('gerenciar_logins.html', users=users)
 
 @app.route('/cadastrar_usuario', methods=['GET', 'POST'])
 @login_required
@@ -578,8 +277,11 @@ def cadastrar_usuario():
             return render_template('cadastrar_usuario.html')
 
         # Criar novo usuário
-        hashed_password = hash_password(password)
-        new_user = User(username=username, password=hashed_password, is_admin=is_admin)
+        new_user = User(
+            username=username, 
+            password=generate_password_hash(password), 
+            is_admin=is_admin
+        )
         db.session.add(new_user)
         db.session.commit()
         flash('Usuário cadastrado com sucesso!', 'success')
@@ -587,43 +289,39 @@ def cadastrar_usuario():
 
     return render_template('cadastrar_usuario.html')
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('main_menu'))  # Redireciona se já estiver logado
-
+@app.route('/editar_layout', methods=['GET', 'POST'])
+@login_required
+def editar_layout():
+    if not current_user.is_admin:
+        flash('Acesso negado.')
+        return redirect(url_for('main_menu'))
+        
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if user and user.password == hash_password(password):
-            login_user(user)
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('main_menu'))
-        flash('Usuário ou senha incorretos.')
-    else:
-        if 'next' in request.args:
-            flash('Por favor, faça login para acessar essa página.')
+        element = request.form['element']
+        setting = LayoutSetting.query.filter_by(element=element).first()
+        if not setting:
+            setting = LayoutSetting(element=element)
+            db.session.add(setting)
+            
+        setting.foreground = request.form['foreground']
+        setting.background = request.form['background']
+        setting.font_family = request.form['font_family']
+        setting.font_size = int(request.form['font_size'])
+        db.session.commit()
+        flash('Layout atualizado com sucesso!')
+        
+    settings = {s.element: s for s in LayoutSetting.query.all()}
+    return render_template('editar_layout.html', settings=settings)
 
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
-
-@app.route('/main_menu')
-@login_required
-def main_menu():
-    return render_template('main_menu.html')
-
+# =====================================
+# ROTAS DE INC 
+# =====================================
 
 @app.route('/cadastro_inc', methods=['GET', 'POST'])
 @login_required
 def cadastro_inc():
     representantes = ["Gabriel Rodrigues da Silva", "Marcos Vinicius Gomes Teixeira", "Aleksandro Carvalho Leão"]
-    fornecedores = Fornecedor.query.all()  # Lista de fornecedores do banco de dados
+    fornecedores = Fornecedor.query.all()
 
     if request.method == 'POST':
         nf = int(request.form['nf'])
@@ -666,9 +364,10 @@ def cadastro_inc():
             files = request.files.getlist('fotos')
             fotos = []
             for file in files:
-                if file and allowed_file(file.filename):
-                    filepath = save_file(file)
-                    fotos.append(filepath)
+                if file and file.filename:
+                    filepath = save_file(file, ['png', 'jpg', 'jpeg', 'gif'])
+                    if filepath:
+                        fotos.append(filepath)
             inc.fotos = json.dumps(fotos)
 
         db.session.add(inc)
@@ -686,6 +385,8 @@ def visualizar_incs():
     item = request.args.get('item')
     fornecedor = request.args.get('fornecedor')
     status = request.args.get('status')
+    page = request.args.get('page', 1, type=int)
+    per_page = app.config.get('ITEMS_PER_PAGE', 10)
 
     # Construir consulta com filtros
     query = INC.query
@@ -698,8 +399,13 @@ def visualizar_incs():
     if status:
         query = query.filter_by(status=status)
 
-    incs = query.all()
-    return render_template('visualizar_incs.html', incs=incs)
+    # Paginar resultados
+    pagination = query.order_by(INC.id.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    incs = pagination.items
+
+    return render_template('visualizar_incs.html', incs=incs, pagination=pagination)
 
 @app.route('/detalhes_inc/<int:inc_id>')
 @login_required
@@ -742,9 +448,10 @@ def editar_inc(inc_id):
         if 'fotos' in request.files:
             files = request.files.getlist('fotos')
             for file in files:
-                if file and allowed_file(file.filename):
-                    filepath = save_file(file)
-                    fotos.append(filepath)
+                if file and file.filename:
+                    filepath = save_file(file, ['png', 'jpg', 'jpeg', 'gif'])
+                    if filepath:
+                        fotos.append(filepath)
 
         inc.fotos = json.dumps(fotos)
         db.session.commit()
@@ -760,10 +467,8 @@ def remover_foto_inc(inc_id, foto):
     fotos = json.loads(inc.fotos) if inc.fotos else []
     if foto in fotos:
         fotos.remove(foto)
-        # Opcional: remover o arquivo físico
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], os.path.basename(foto))
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        # Remover o arquivo físico
+        remove_file(foto)
     inc.fotos = json.dumps(fotos)
     db.session.commit()
     flash('Foto removida com sucesso!')
@@ -773,6 +478,12 @@ def remover_foto_inc(inc_id, foto):
 @login_required
 def excluir_inc(inc_id):
     inc = INC.query.get_or_404(inc_id)
+    
+    # Remover fotos associadas
+    fotos = json.loads(inc.fotos) if inc.fotos else []
+    for foto in fotos:
+        remove_file(foto)
+    
     db.session.delete(inc)
     db.session.commit()
     flash('INC excluída com sucesso!')
@@ -793,50 +504,60 @@ def expiracao_inc():
             vencidas.append((inc, days_overdue))
     return render_template('expiracao_inc.html', vencidas=vencidas)
 
-@app.route('/gerenciar_logins', methods=['GET', 'POST'])
+@app.route('/print_inc_label/<int:inc_id>')
 @login_required
-def gerenciar_logins():
-    if not current_user.is_admin:
-        flash('Acesso negado.')
-        return redirect(url_for('main_menu'))
-    if request.method == 'POST':
-        action = request.form.get('action')
-        user_id = request.form.get('user_id')
-        user = User.query.get_or_404(user_id)
-        if action == 'delete' and user.username != current_user.username:
-            db.session.delete(user)
-            db.session.commit()
-            flash('Usuário excluído com sucesso!')
-        elif action == 'update':
-            new_password = request.form.get('new_password')
-            if new_password:
-                user.password = hash_password(new_password)
-            user.is_admin = 'is_admin' in request.form
-            db.session.commit()
-            flash('Usuário atualizado com sucesso!')
-    users = User.query.all()
-    return render_template('gerenciar_logins.html', users=users)
+def print_inc_label(inc_id):
+    inc = INC.query.get_or_404(inc_id)
+    
+    # Montar o ZPL com layout ajustado
+    zpl = f"""^XA
+^PW800          ; Largura: 100 mm = 800 pontos (203 DPI)
+^LL976          ; Altura: 122 mm = 976 pontos (203 DPI)
+^CF0,30         ; Fonte padrão, tamanho 20 pontos
+^FO50,50^FDNF-e:^FS
+^FO300,50^FD{inc.nf}^FS
+^FO50,100^FDData:^FS
+^FO300,100^FD{inc.data}^FS
+^FO50,150^FDRepresentante:^FS
+^FO300,150^FD{inc.representante[:20]}^FS    ; Limitar a 20 caracteres
+^FO50,200^FDFornecedor:^FS
+^FO300,200^FD{inc.fornecedor[:20]}^FS      ; Limitar a 20 caracteres
+^FO50,250^FDItem:^FS
+^FO300,250^FD{inc.item}^FS
+^FO50,300^FDQtd. Recebida:^FS
+^FO300,300^FD{inc.quantidade_recebida}^FS
+^FO50,350^FDQtd. Defeituosa:^FS
+^FO300,350^FD{inc.quantidade_com_defeito}^FS
+^FO50,400^FDDescricao:^FS
+^FO300,400^FB600,6,N,10^FD{inc.descricao_defeito}^FS  ; Bloco de texto com quebra de linha
+^FO50,650^FDUrgencia:^FS
+^FO300,650^FD{inc.urgencia}^FS
+^FO50,720^FDAcao Recomendada:^FS
+^FO300,720^FB600,3,N,10^FD{inc.acao_recomendada}^FS  ; Bloco de texto com quebra de linha
+^FO50,830^FDStatus:^FS
+^FO300,830^FD{inc.status}^FS
+^XZ"""
 
-@app.route('/editar_layout', methods=['GET', 'POST'])
-@login_required
-def editar_layout():
-    if not current_user.is_admin:
-        flash('Acesso negado.')
-        return redirect(url_for('main_menu'))
-    if request.method == 'POST':
-        element = request.form['element']
-        setting = LayoutSetting.query.filter_by(element=element).first()
-        if not setting:
-            setting = LayoutSetting(element=element)
-            db.session.add(setting)
-        setting.foreground = request.form['foreground']
-        setting.background = request.form['background']
-        setting.font_family = request.form['font_family']
-        setting.font_size = int(request.form['font_size'])
-        db.session.commit()
-        flash('Layout atualizado com sucesso!')
-    settings = {s.element: s for s in LayoutSetting.query.all()}
-    return render_template('editar_layout.html', settings=settings)
+    printer_ip = app.config.get('PRINTER_IP', "192.168.1.48")
+    printer_port = app.config.get('PRINTER_PORT', 9100)
+    
+    try:
+        logging.debug(f"Tentando conectar a {printer_ip}:{printer_port}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)  # Timeout de 5 segundos
+            s.connect((printer_ip, printer_port))
+            logging.debug("Conexão estabelecida, enviando ZPL")
+            s.send(zpl.encode('utf-8'))
+            logging.debug("ZPL enviado com sucesso")
+        flash('Etiqueta enviada para impressão!', 'success')
+    except socket.error as e:
+        logging.error(f"Erro de socket: {str(e)}")
+        flash(f'Erro ao imprimir: {str(e)}', 'danger')
+    except Exception as e:
+        logging.error(f"Erro geral: {str(e)}")
+        flash(f'Erro ao imprimir: {str(e)}', 'danger')
+
+    return redirect(url_for('detalhes_inc', inc_id=inc_id))
 
 @app.route('/export_csv')
 @login_required
@@ -844,9 +565,13 @@ def export_csv():
     incs = INC.query.all()
     output = BytesIO()
     writer = csv.writer(output)
-    writer.writerow(['nf', 'data', 'representante', 'fornecedor', 'item', 'quantidade_recebida', 'quantidade_com_defeito', 'descricao_defeito', 'urgencia', 'acao_recomendada', 'fotos', 'status'])
+    writer.writerow(['nf', 'data', 'representante', 'fornecedor', 'item', 'quantidade_recebida', 
+                     'quantidade_com_defeito', 'descricao_defeito', 'urgencia', 'acao_recomendada', 
+                     'status', 'oc'])
     for inc in incs:
-        writer.writerow([inc.nf, inc.data, inc.representante, inc.fornecedor, inc.item, inc.quantidade_recebida, inc.quantidade_com_defeito, inc.descricao_defeito, inc.urgencia, inc.acao_recomendada, inc.fotos, inc.status])
+        writer.writerow([inc.nf, inc.data, inc.representante, inc.fornecedor, inc.item, 
+                         inc.quantidade_recebida, inc.quantidade_com_defeito, inc.descricao_defeito, 
+                         inc.urgencia, inc.acao_recomendada, inc.status, inc.oc])
     output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name='incs.csv')
 
@@ -859,22 +584,28 @@ def export_pdf(inc_id):
     width, height = letter
     y = height - 50
     c.setFont("Helvetica", 12)
+    c.drawString(50, y, f"INC #{inc.oc}")
+    y -= 20
+    
     details = [
         f"NF-e: {inc.nf}", f"Data: {inc.data}", f"Representante: {inc.representante}",
         f"Fornecedor: {inc.fornecedor}", f"Item: {inc.item}", f"Qtd. Recebida: {inc.quantidade_recebida}",
         f"Qtd. com Defeito: {inc.quantidade_com_defeito}", f"Descrição do Defeito: {inc.descricao_defeito}",
         f"Urgência: {inc.urgencia}", f"Ação Recomendada: {inc.acao_recomendada}", f"Status: {inc.status}"
     ]
+    
     for line in details:
         c.drawString(50, y, line)
         y -= 20
+        
     fotos = json.loads(inc.fotos)
     if fotos:
         c.showPage()
         x, y = 50, height - 220
         for foto in fotos:
-            if os.path.exists(foto):
-                c.drawImage(foto, x, y, width=200, height=200, preserveAspectRatio=True)
+            full_path = os.path.join(app.config['UPLOAD_FOLDER'], os.path.basename(foto))
+            if os.path.exists(full_path):
+                c.drawImage(full_path, x, y, width=200, height=200, preserveAspectRatio=True)
                 x += 220
                 if x > width - 200:
                     x = 50
@@ -885,6 +616,383 @@ def export_pdf(inc_id):
     c.save()
     buffer.seek(0)
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=f'inc_{inc.nf}.pdf')
+
+@app.route('/monitorar_fornecedores', methods=['GET', 'POST'])
+@login_required
+def monitorar_fornecedores():
+    fornecedores = Fornecedor.query.all()
+    incs = []
+    graph_url = None  # Inicializar graph_url como None
+
+    if request.method == 'POST':
+        fornecedor = request.form.get('fornecedor')
+        item = request.form.get('item')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+
+        # Construir consulta com filtros
+        query = INC.query
+        if fornecedor:
+            query = query.filter_by(fornecedor=fornecedor)
+        if item:
+            query = query.filter(INC.item.ilike(f'%{item}%'))
+        if start_date and end_date:
+            start = parse_date(start_date)
+            end = parse_date(end_date)
+            if start and end:
+                start_str = format_date_for_db(start)
+                end_str = format_date_for_db(end)
+                query = query.filter(INC.data >= start_str, INC.data <= end_str)
+
+        incs = query.all()
+
+        # Preparar dados para o gráfico (mês vs quantidade de INCs) apenas se houver INCs
+        if incs:
+            graph_data = {}
+            for inc in incs:
+                month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')  # Ex.: "03-2025"
+                graph_data[month] = graph_data.get(month, 0) + 1
+
+            # Gerar gráfico
+            plt.figure(figsize=(10, 6))
+            plt.bar(graph_data.keys(), graph_data.values())
+            plt.xlabel('Mês de Referência')
+            plt.ylabel('Quantidade de INCs')
+            plt.title('Monitoramento de Fornecedores')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+
+            # Salvar gráfico em memória
+            img = BytesIO()
+            plt.savefig(img, format='png')
+            img.seek(0)
+            graph_url = 'data:image/png;base64,' + base64.b64encode(img.getvalue()).decode()
+            plt.close()
+
+    return render_template('monitorar_fornecedores.html', fornecedores=fornecedores, incs=incs, graph_url=graph_url)
+
+@app.route('/export_monitor_pdf', methods=['GET'])
+@login_required
+def export_monitor_pdf():
+    fornecedor = request.args.get('fornecedor')
+    item = request.args.get('item')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    query = INC.query
+    if fornecedor:
+        query = query.filter_by(fornecedor=fornecedor)
+    if item:
+        query = query.filter(INC.item.ilike(f'%{item}%'))
+    if start_date and end_date:
+        start = parse_date(start_date)
+        end = parse_date(end_date)
+        if start and end:
+            start_str = format_date_for_db(start)
+            end_str = format_date_for_db(end)
+            query = query.filter(INC.data >= start_str, INC.data <= end_str)
+
+    incs = query.all()
+    if not incs:
+        flash('Nenhum dado para exportar', 'warning')
+        return redirect(url_for('monitorar_fornecedores'))
+
+    # Criar arquivo temporário
+    temp_path = os.path.join(app.config['UPLOAD_FOLDER'], 'temp_graph.png')
+    try:
+        # Gerar gráfico
+        graph_data = {}
+        for inc in incs:
+            month = datetime.strptime(inc.data, '%d-%m-%Y').strftime('%m-%Y')
+            graph_data[month] = graph_data.get(month, 0) + 1
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(graph_data.keys(), graph_data.values())
+        plt.xlabel('Mês de Referência')
+        plt.ylabel('Quantidade de INCs')
+        plt.title('Monitoramento de Fornecedores')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(temp_path, format='png')
+        plt.close()
+
+        # Gerar PDF
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        y = height - 50
+
+        # Adicionar gráfico ao PDF
+        c.drawString(50, y, "Gráfico de Monitoramento")
+        y -= 20
+        c.drawImage(temp_path, 50, y - 400, width=500, height=400, preserveAspectRatio=True)
+        y -= 450
+
+        # Listar INCs
+        c.drawString(50, y, "Lista de INCs")
+        y -= 20
+        for inc in incs:
+            text = f"NF-e: {inc.nf}, Data: {inc.data}, Fornecedor: {inc.fornecedor[:20]}, Item: {inc.item}"
+            c.drawString(50, y, text)
+            y -= 20
+            if y < 50:
+                c.showPage()
+                y = height - 50
+
+        c.save()
+        buffer.seek(0)
+        
+        # Limpar arquivo temporário após uso
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='monitor_fornecedores.pdf')
+    
+    finally:
+        # Garantir que o arquivo temporário seja removido mesmo em caso de erro
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+# =====================================
+# ROTAS DE FORNECEDORES
+# =====================================
+
+@app.route('/gerenciar_fornecedores', methods=['GET', 'POST'])
+@login_required
+def gerenciar_fornecedores():
+    if not current_user.is_admin:
+        flash('Acesso negado.')
+        return redirect(url_for('main_menu'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        fornecedor_id = request.form.get('fornecedor_id')
+        fornecedor = Fornecedor.query.get_or_404(fornecedor_id) if fornecedor_id else None
+
+        if action == 'delete':
+            db.session.delete(fornecedor)
+            db.session.commit()
+            flash('Fornecedor excluído com sucesso!')
+        elif action == 'update':
+            fornecedor.razao_social = request.form['razao_social']
+            fornecedor.cnpj = request.form['cnpj']
+            fornecedor.fornecedor_logix = request.form['fornecedor_logix']
+            db.session.commit()
+            flash('Fornecedor atualizado com sucesso!!')
+
+    fornecedores = Fornecedor.query.all()
+    return render_template('gerenciar_fornecedores.html', fornecedores=fornecedores)
+
+@app.route('/cadastrar_fornecedor', methods=['GET', 'POST'])
+@login_required
+def cadastrar_fornecedor():
+    if not current_user.is_admin:
+        flash('Acesso negado.')
+        return redirect(url_for('main_menu'))
+
+    if request.method == 'POST':
+        razao_social = request.form['razao_social']
+        cnpj = request.form['cnpj']
+        fornecedor_logix = request.form['fornecedor_logix']
+
+        # Validação do CNPJ
+        if Fornecedor.query.filter_by(cnpj=cnpj).first():
+            flash('CNPJ já cadastrado.')
+            return render_template('cadastrar_fornecedor.html')
+
+        fornecedor = Fornecedor(
+            razao_social=razao_social,
+            cnpj=cnpj,
+            fornecedor_logix=fornecedor_logix
+        )
+        db.session.add(fornecedor)
+        db.session.commit()
+        flash('Fornecedor cadastrado com sucesso!')
+        return redirect(url_for('gerenciar_fornecedores'))
+
+    return render_template('cadastrar_fornecedor.html')
+
+# =====================================
+# ROTAS DE INSPEÇÃO
+# =====================================
+
+@app.route('/set_crm_token', methods=['GET', 'POST'])
+@login_required
+def set_crm_token():
+    if request.method == 'POST':
+        crm_link = request.form['crm_link']
+        token_match = re.search(r'token=([a-f0-9]+)', crm_link)
+        
+        if token_match:
+            token = token_match.group(1)
+            session['crm_token'] = token
+            session['inspecao_crm_token'] = token  # Atualiza o token da inspeção também
+            flash('Token CRM atualizado com sucesso!', 'success')
+            return redirect(url_for('visualizar_registros_inspecao'))
+        else:
+            flash('Link CRM inválido. Verifique o link.', 'danger')
+            return redirect(url_for('visualizar_registros_inspecao'))
+    
+    return render_template('set_crm_token.html')
+
+@app.route('/rotina_inspecao', methods=['GET', 'POST'])
+@login_required
+def rotina_inspecao():
+    # Verificar se o token CRM está definido
+    if 'crm_token' not in session:
+        flash('Você precisa importar o token do CRM primeiro.')
+        return redirect(url_for('set_crm_token'))
+    
+    if request.method == 'POST':
+        # Verificar se o arquivo foi enviado
+        if 'file' not in request.files:
+            flash('Nenhum arquivo selecionado')
+            return redirect(request.url)
+        
+        file = request.files['file']
+        
+        # Se nenhum arquivo foi selecionado
+        if file.filename == '':
+            flash('Nenhum arquivo selecionado')
+            return redirect(request.url)
+        
+        # Verificar extensão do arquivo
+        if not file.filename.lower().endswith('.lst'):
+            flash('Apenas arquivos .lst são permitidos')
+            return redirect(request.url)
+        
+        # Salvar o arquivo temporariamente
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        try:
+            # Analisar o arquivo .lst
+            registros = ler_arquivo_lst(filepath)
+            
+            if registros:
+                # Armazenar os registros analisados na sessão
+                session['inspecao_registros'] = registros
+                # Armazenar o token CRM atual com os registros
+                session['inspecao_crm_token'] = session['crm_token']
+                flash(f'Foram importados {len(registros)} registros.')
+                return redirect(url_for('visualizar_registros_inspecao'))
+            else:
+                flash('Nenhum registro válido foi importado.')
+                return redirect(request.url)
+        
+        except Exception as e:
+            flash(f'Erro ao importar arquivo: {str(e)}')
+            return redirect(request.url)
+        finally:
+            # Limpar o arquivo temporário
+            if os.path.exists(filepath):
+                os.remove(filepath)
+    
+    return render_template('rotina_inspecao.html')
+
+@app.route('/visualizar_registros_inspecao', methods=['GET', 'POST'])
+@login_required
+def visualizar_registros_inspecao():
+    registros = session.get('inspecao_registros', [])
+    
+    if not registros:
+        flash('Nenhum registro para inspeção.')
+        return redirect(url_for('rotina_inspecao'))
+    
+    scroll_position = None
+    if request.method == 'POST':
+        action = request.form.get('action')
+        item_index = int(request.form.get('item_index'))
+        ar = int(request.form.get('ar'))
+        scroll_position = request.form.get('scroll_position')
+        
+        registros_no_grupo = [r for r in registros if r['num_aviso'] == ar]
+        
+        if 0 <= item_index < len(registros_no_grupo):
+            registro_global_index = registros.index(registros_no_grupo[item_index])
+            if action == 'inspecionar':
+                registros[registro_global_index]['inspecionado'] = True
+                registros[registro_global_index]['adiado'] = False
+            elif action == 'adiar':
+                registros[registro_global_index]['inspecionado'] = False
+                registros[registro_global_index]['adiado'] = True
+            session['inspecao_registros'] = registros
+    
+    # Agrupar registros por AR
+    grupos_ar = {}
+    for registro in registros:
+        ar = registro['num_aviso']
+        if ar not in grupos_ar:
+            grupos_ar[ar] = []
+        grupos_ar[ar].append(registro)
+    
+    grupos_ar_ordenados = sorted(grupos_ar.items(), key=lambda x: x[0])
+    
+    # Passar scroll_position como parâmetro na URL
+    if scroll_position:
+        return redirect(url_for('visualizar_registros_inspecao', scroll_position=scroll_position))
+    
+    return render_template('visualizar_registros_inspecao.html', grupos_ar=grupos_ar_ordenados)
+
+@app.route('/listar_rotinas_inspecao')
+@login_required
+def listar_rotinas_inspecao():
+    rotinas = RotinaInspecao.query.all()
+    # Converter registros de JSON para Python para cada rotina
+    for rotina in rotinas:
+        rotina.registros_python = json.loads(rotina.registros)
+    return render_template('listar_rotinas_inspecao.html', rotinas=rotinas)
+
+@app.route('/salvar_rotina_inspecao', methods=['POST'])
+@login_required
+def salvar_rotina_inspecao():
+    registros = session.get('inspecao_registros', [])
+    
+    if not registros:
+        flash('Nenhum registro para salvar.')
+        return redirect(url_for('rotina_inspecao'))
+    
+    # Verificar se todos os registros foram processados
+    for registro in registros:
+        inspecionado = registro.get('inspecionado', False)
+        adiado = registro.get('adiado', False)
+        if not inspecionado and not adiado:
+            flash('Todos os registros devem ser inspecionados ou adiados antes de salvar a rotina.', 'danger')
+            return redirect(url_for('visualizar_registros_inspecao'))
+    
+    rotina = RotinaInspecao(
+        inspetor_id=current_user.id,
+        registros=json.dumps(registros)
+    )
+    db.session.add(rotina)
+    db.session.commit()
+    
+    flash('Rotina de inspeção salva com sucesso!', 'success')
+    session.pop('inspecao_registros', None)
+    return redirect(url_for('main_menu'))
+
+# =====================================
+# PROCESSOR E INICIALIZAÇÃO
+# =====================================
+
+@app.context_processor
+def inject_settings():
+    settings = {s.element: s for s in LayoutSetting.query.all()}
+    return dict(settings=settings, config=app.config)
+
+# Inicialização do banco de dados
+with app.app_context():
+    db.create_all()
+    # Verificar se já existe um admin antes de criar
+    if not User.query.filter_by(username="admin").first():
+        admin = User(
+            username="admin", 
+            password=generate_password_hash("admin"),
+            is_admin=True
+        )
+        db.session.add(admin)
+        db.session.commit()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

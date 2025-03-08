@@ -1,46 +1,7 @@
 ﻿{% extends "base.html" %}
 {% block content %}
 <h1 class="text-center mb-4">Visualizar INCs</h1>
-<!-- Adicionar formulário de filtro aqui (ver próxima seção) -->
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>OC</th> <!-- Nova coluna -->
-            <th>NF-e</th>
-            <th>Data</th>
-            <th>Representante</th>
-            <th>Fornecedor</th>
-            <th>Item</th>
-            <th>Qtd. Recebida</th>
-            <th>Qtd. Defeituosa</th>
-            <th>Urgência</th>
-            <th>Status</th>
-            <th>Ações</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for inc in incs %}
-        <tr>
-            <td>{{ inc.oc }}</td> <!-- Exibir OC -->
-            <td>{{ inc.nf }}</td>
-            <td>{{ inc.data }}</td>
-            <td>{{ inc.representante }}</td>
-            <td>{{ inc.fornecedor }}</td>
-            <td>{{ inc.item }}</td>
-            <td>{{ inc.quantidade_recebida }}</td>
-            <td>{{ inc.quantidade_com_defeito }}</td>
-            <td>{{ inc.urgencia }}</td>
-            <td>{{ inc.status }}</td>
-            <td>
-                <a href="{{ url_for('detalhes_inc', inc_id=inc.id) }}" class="btn btn-info btn-sm">Detalhes</a>
-                <a href="{{ url_for('editar_inc', inc_id=inc.id) }}" class="btn btn-warning btn-sm">Editar</a>
-                <form action="{{ url_for('excluir_inc', inc_id=inc.id) }}" method="POST" style="display:inline;">
-                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza?');">Excluir</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
+
 <!-- Formulário de Filtro -->
 <form method="GET" class="mb-4">
     <div class="row">
@@ -71,8 +32,74 @@
     </div>
 </form>
 
+<!-- Tabela de resultados -->
 <table class="table table-striped">
-
+    <thead>
+        <tr>
+            <th>OC</th>
+            <th>NF-e</th>
+            <th>Data</th>
+            <th>Representante</th>
+            <th>Fornecedor</th>
+            <th>Item</th>
+            <th>Qtd. Recebida</th>
+            <th>Qtd. Defeituosa</th>
+            <th>Urgência</th>
+            <th>Status</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for inc in incs %}
+        <tr>
+            <td>{{ inc.oc }}</td>
+            <td>{{ inc.nf }}</td>
+            <td>{{ inc.data }}</td>
+            <td>{{ inc.representante }}</td>
+            <td>{{ inc.fornecedor }}</td>
+            <td>{{ inc.item }}</td>
+            <td>{{ inc.quantidade_recebida }}</td>
+            <td>{{ inc.quantidade_com_defeito }}</td>
+            <td>{{ inc.urgencia }}</td>
+            <td>{{ inc.status }}</td>
+            <td>
+                <a href="{{ url_for('detalhes_inc', inc_id=inc.id) }}" class="btn btn-info btn-sm">Detalhes</a>
+                <a href="{{ url_for('editar_inc', inc_id=inc.id) }}" class="btn btn-warning btn-sm">Editar</a>
+                <form action="{{ url_for('excluir_inc', inc_id=inc.id) }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Tem certeza?');">Excluir</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
 </table>
+
+<!-- Controles de paginação -->
+{% if pagination and pagination.pages > 1 %}
+<nav aria-label="Páginas de resultados">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {% if pagination.page == 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('visualizar_incs', page=pagination.prev_num, nf=request.args.get('nf', ''), item=request.args.get('item', ''), fornecedor=request.args.get('fornecedor', ''), status=request.args.get('status', '')) if pagination.has_prev else '#' }}" tabindex="-1">Anterior</a>
+    </li>
+    
+    {% for page_num in pagination.iter_pages() %}
+      {% if page_num %}
+        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('visualizar_incs', page=page_num, nf=request.args.get('nf', ''), item=request.args.get('item', ''), fornecedor=request.args.get('fornecedor', ''), status=request.args.get('status', '')) }}">{{ page_num }}</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <a class="page-link" href="#">...</a>
+        </li>
+      {% endif %}
+    {% endfor %}
+    
+    <li class="page-item {% if pagination.page == pagination.pages %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('visualizar_incs', page=pagination.next_num, nf=request.args.get('nf', ''), item=request.args.get('item', ''), fornecedor=request.args.get('fornecedor', ''), status=request.args.get('status', '')) if pagination.has_next else '#' }}">Próximo</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+
 <a href="{{ url_for('main_menu') }}" class="btn btn-secondary">Voltar</a>
 {% endblock %}

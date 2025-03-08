@@ -2,6 +2,9 @@
 {% block content %}
 <h1 class="text-center mb-4">Registros de Inspeção</h1>
 
+<!-- Elemento para armazenar URL base do CRM -->
+<div id="crm-base-url" data-url="{{ config.CRM_BASE_URL }}"></div>
+
 {% if session.get('inspecao_crm_token') %}
 <div class="alert alert-info mb-3" role="alert">
     Token CRM em uso: {{ session['inspecao_crm_token'] }}
@@ -55,7 +58,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="openCRMLink('{{ registro.item }}')">Acessar Desenho</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="openCRMLink('{{ registro.item }}', '{{ session.get('inspecao_crm_token', '') }}')">Acessar Desenho</button>
                         <form method="POST" action="{{ url_for('visualizar_registros_inspecao') }}" style="display:inline;" onsubmit="saveScrollPosition()">
                             <input type="hidden" name="item_index" value="{{ loop.index0 }}">
                             <input type="hidden" name="action" value="inspecionar">
@@ -88,41 +91,8 @@
 </form>
 
 <script>
-function openCRMLink(item) {
-    const token = "{{ session.get('inspecao_crm_token', '') }}";
-    if (!token) {
-        alert('Token CRM não disponível');
-        return;
-    }
-    const baseUrl = "http://192.168.1.47/crm/index.php?route=engenharia/produto/update";
-    const encodedItem = encodeURIComponent(item);
-    const link = `${baseUrl}&token=${token}&cod_item=${encodedItem}&filter_cod=${item.toLowerCase()}`;
-    window.open(link, '_blank');
-}
-
-function saveScrollPosition() {
-    const scrollPosition = window.scrollY || window.pageYOffset;
-    document.querySelectorAll('input[name="scroll_position"]').forEach(input => {
-        input.value = scrollPosition;
-    });
-}
-
-function updateSaveButton() {
-    const statusCells = document.querySelectorAll('.status-cell');
-    let allProcessed = true;
-    
-    statusCells.forEach(cell => {
-        const inspecionado = cell.getAttribute('data-inspecionado') === 'true';
-        const adiado = cell.getAttribute('data-adiado') === 'true';
-        if (!inspecionado && !adiado) {
-            allProcessed = false;
-        }
-    });
-    
-    const saveButton = document.getElementById('saveButton');
-    saveButton.disabled = !allProcessed;
-}
-
+// O código JavaScript foi movido para static/js/script.js
+// Adicionamos somente o código específico para este template aqui
 document.addEventListener('DOMContentLoaded', function() {
     updateSaveButton();
     
